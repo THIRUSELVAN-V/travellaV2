@@ -4,6 +4,8 @@ import { Home } from './components/Home';
 import { Login } from './components/Login';
 import { Register } from './components/Register';
 import { Booking } from './components/Booking';
+import { BookingDetails } from './components/BookingDetails';
+import BookingProcess from './components/BookingProcess';
 import { Chat } from './components/Chat';
 import { Itinerary } from './components/Itinerary';
 
@@ -24,6 +26,10 @@ export default function App() {
         return <Register onNavigate={handleNavigate} />;
       case 'booking':
         return <Booking onNavigate={handleNavigate} />;
+      case 'bookingDetails':
+        return <BookingDetails onNavigate={handleNavigate} />;
+      case 'bookingProcess':
+        return <BookingProcess onNavigate={handleNavigate} />;
       case 'chat':
         return <Chat onNavigate={handleNavigate} />;
       case 'itinerary':

@@ -130,44 +130,20 @@ export function Booking({ onNavigate }: BookingProps) {
   };
 
   const handleBooking = async (type: 'hotel' | 'vehicle', item: any) => {
-    if (!user) {
-      setError('Please login to make a booking');
-      return;
-    }
-
     setIsLoading(true);
     setError('');
 
     try {
-      const accessToken = (await supabase.auth.getSession()).data.session?.access_token;
-      
-      const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-0a04762c/bookings`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
-        },
-        body: JSON.stringify({
-          type,
-          item,
-          bookingData,
-          totalPrice: type === 'hotel' ? item.price : item.price * 3 // Assuming 3 days for cars
-        })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || 'Booking failed');
-        return;
-      }
-
-      setBookingSuccess(`${type === 'hotel' ? 'Hotel' : 'Vehicle'} booked successfully!`);
-      setTimeout(() => setBookingSuccess(''), 3000);
-
+      // Save context and navigate to booking process page
+      try {
+        localStorage.setItem('bookingItemType', type);
+        localStorage.setItem('bookingItem', JSON.stringify(item));
+        localStorage.setItem('bookingData', JSON.stringify(bookingData));
+      } catch {}
+      onNavigate('bookingProcess');
     } catch (error) {
-      console.error('Booking error:', error);
-      setError('An unexpected error occurred. Please try again.');
+      console.error('Booking navigation error:', error);
+      setError('Unable to start booking process. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -342,14 +318,29 @@ export function Booking({ onNavigate }: BookingProps) {
                         ))}
                       </div>
                       
-                      <Button 
-                        className="w-full text-white"
-                        style={{ backgroundColor: '#36bcf8' }}
-                        onClick={() => handleBooking('hotel', hotel)}
-                        disabled={isLoading}
-                      >
-                        {isLoading ? 'Booking...' : `Book Now - $${hotel.price}/night`}
-                      </Button>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <Button 
+                          variant="outline"
+                          className="border-2"
+                          style={{ borderColor: '#36bcf8', color: '#36bcf8' }}
+                          onClick={() => {
+                            try {
+                              localStorage.setItem('selectedHotel', JSON.stringify(hotel));
+                            } catch {}
+                            onNavigate('bookingDetails');
+                          }}
+                        >
+                          View Details
+                        </Button>
+                        <Button 
+                          className="text-white"
+                          style={{ backgroundColor: '#36bcf8' }}
+                          onClick={() => handleBooking('hotel', hotel)}
+                          disabled={isLoading}
+                        >
+                          {isLoading ? 'Booking...' : `Book Now - $${hotel.price}/night`}
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
