@@ -5,24 +5,19 @@ import { Label } from './ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
 import { Plane, Mail, Lock, Eye, EyeOff } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
 
 interface LoginProps {
   onNavigate: (page: string) => void;
 }
 
+const BASE_URL = import.meta.env.VITE_BASE_URL;
+
 export function Login({ onNavigate }: LoginProps) {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-
-  const supabase = createClient(
-    `https://${projectId}.supabase.co`,
-    publicAnonKey
-  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,19 +25,35 @@ export function Login({ onNavigate }: LoginProps) {
     setError('');
 
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const response = await fetch(`${BASE_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username,
+          password,
+        }),
       });
 
-      if (authError) {
-        setError(authError.message);
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.message || 'Login failed. Please try again.');
         return;
       }
 
-      if (data?.session) {
-        onNavigate('home');
+      // Store auth token if provided
+      if (data.token) {
+        localStorage.setItem('authToken', data.token);
       }
+
+      // Store user data if provided
+      if (data.user) {
+        localStorage.setItem('user', JSON.stringify(data.user));
+      }
+
+      onNavigate('home');
     } catch (error) {
       console.error('Login error:', error);
       setError('An unexpected error occurred. Please try again.');
@@ -85,17 +96,17 @@ export function Login({ onNavigate }: LoginProps) {
 
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="email">Email Address</Label>
+                  <Label htmlFor="username">Username</Label>
                   <div className="relative mt-1">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <Mail className="h-5 w-5 text-gray-400" />
                     </div>
                     <Input
-                      id="email"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Enter your email"
+                      id="username"
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder="Enter your username"
                       className="pl-10"
                       required
                     />
@@ -177,7 +188,6 @@ export function Login({ onNavigate }: LoginProps) {
                   variant="outline"
                   className="w-full"
                   onClick={() => {
-                    // Placeholder for Google OAuth
                     setError('Social login will be available in the full version');
                   }}
                 >

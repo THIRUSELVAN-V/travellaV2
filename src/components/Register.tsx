@@ -5,15 +5,16 @@ import { Label } from './ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
 import { Plane, Mail, Lock, User, Eye, EyeOff } from 'lucide-react';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
 
 interface RegisterProps {
   onNavigate: (page: string) => void;
 }
 
+const BASE_URL = import.meta.env.VITE_BASE_URL;
+
 export function Register({ onNavigate }: RegisterProps) {
   const [formData, setFormData] = useState({
-    name: '',
+    username: '',
     email: '',
     password: '',
     confirmPassword: ''
@@ -33,8 +34,8 @@ export function Register({ onNavigate }: RegisterProps) {
   };
 
   const validateForm = () => {
-    if (!formData.name.trim()) {
-      setError('Name is required');
+    if (!formData.username.trim()) {
+      setError('Username is required');
       return false;
     }
     if (!formData.email) {
@@ -64,29 +65,28 @@ export function Register({ onNavigate }: RegisterProps) {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-0a04762c/signup`, {
+      const response = await fetch(`${BASE_URL}/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${publicAnonKey}`
         },
         body: JSON.stringify({
+          username: formData.username,
           email: formData.email,
-          password: formData.password,
-          name: formData.name
+          password: formData.password
         })
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        setError(data.error || 'Registration failed');
+        setError(data.message || data.error || 'Registration failed');
         return;
       }
 
       setSuccess('Account created successfully! You can now sign in.');
       setFormData({
-        name: '',
+        username: '',
         email: '',
         password: '',
         confirmPassword: ''
@@ -144,18 +144,18 @@ export function Register({ onNavigate }: RegisterProps) {
 
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="name">Full Name</Label>
+                  <Label htmlFor="username">Username</Label>
                   <div className="relative mt-1">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <User className="h-5 w-5 text-gray-400" />
                     </div>
                     <Input
-                      id="name"
-                      name="name"
+                      id="username"
+                      name="username"
                       type="text"
-                      value={formData.name}
+                      value={formData.username}
                       onChange={handleInputChange}
-                      placeholder="Enter your full name"
+                      placeholder="Choose a username"
                       className="pl-10"
                       required
                     />

@@ -1,80 +1,30 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Badge } from './ui/badge';
-import { Alert, AlertDescription } from './ui/alert';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { 
   Send, 
-  Bot, 
-  User, 
-  Users, 
-  MessageCircle, 
-  Plus, 
-  Hash, 
+  Sparkles, 
+  MessageCircle,
   MapPin,
-  Calendar,
   DollarSign,
-  Sparkles
+  Calendar,
+  User
 } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
 
-interface ChatProps {
-  onNavigate: (page: string) => void;
-}
-
-interface Message {
-  id: string;
-  message: string;
-  userId: string;
-  userName: string;
-  timestamp: string;
-  roomId: string;
-}
-
-export function Chat({ onNavigate }: ChatProps) {
-  const [user, setUser] = useState<any>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+export default function Chat() {
+  const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
-  const [currentRoom, setCurrentRoom] = useState('general');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef(null);
 
-  const supabase = createClient(
-    `https://${projectId}.supabase.co`,
-    publicAnonKey
-  );
-
-  const chatRooms = [
-    { id: 'general', name: 'General Travel', icon: <MessageCircle className="h-4 w-4" />, members: 24 },
-    { id: 'europe', name: 'Europe Adventures', icon: <MapPin className="h-4 w-4" />, members: 18 },
-    { id: 'budget', name: 'Budget Travel Tips', icon: <DollarSign className="h-4 w-4" />, members: 31 },
-    { id: 'planning', name: 'Trip Planning', icon: <Calendar className="h-4 w-4" />, members: 15 }
-  ];
-
-  // AI Assistant mock responses
-  const aiResponses = [
-    "I'd be happy to help you plan your trip! What destination are you considering?",
-    "Based on your preferences, I recommend checking out our personalized itinerary feature. It can create a perfect schedule for your trip!",
-    "For budget travel, consider visiting during off-peak seasons and booking accommodations in advance. Would you like specific recommendations?",
-    "European travel is amazing! The best time to visit depends on your preferences. Spring and fall offer great weather and fewer crowds.",
-    "I can help you find the best deals on hotels and flights. What's your travel budget and preferred dates?",
-    "Travel insurance is always a good idea, especially for international trips. I can suggest some reliable providers."
-  ];
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user || null);
-    });
+    loadChatHistory();
   }, []);
-
-  useEffect(() => {
-    if (currentRoom) {
-      loadMessages();
-    }
-  }, [currentRoom]);
 
   useEffect(() => {
     scrollToBottom();
@@ -84,381 +34,257 @@ export function Chat({ onNavigate }: ChatProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const loadMessages = async () => {
+  const loadChatHistory = async () => {
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-0a04762c/chat/messages/${currentRoom}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`
-          }
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setMessages(data.messages || []);
+      const result = await window.storage.get('ai-chat-history');
+      if (result) {
+        setMessages(JSON.parse(result.value));
       }
     } catch (error) {
-      console.error('Error loading messages:', error);
+      console.log('No chat history found');
     }
   };
 
+  const saveChatHistory = async (updatedMessages) => {
+    try {
+      await window.storage.set('ai-chat-history', JSON.stringify(updatedMessages));
+    } catch (error) {
+      console.error('Error saving chat history:', error);
+    }
+  };
+
+ const sendMessageToGemini = async (userMessage) => {
+  try {
+    const response = await fetch("http://localhost:5000/api/chat/aichat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: userMessage }),
+    });
+
+    if (!response.ok) throw new Error("Backend error");
+    const data = await response.json();
+    return data.reply;
+  } catch (error) {
+    console.error("Error calling backend:", error);
+    throw error;
+  }
+};
+
+
   const sendMessage = async () => {
     if (!newMessage.trim()) return;
-    
-    if (!user) {
-      setError('Please login to send messages');
-      return;
-    }
 
     setIsLoading(true);
     setError('');
 
+    const userMessage = {
+      id: `user-${Date.now()}`,
+      message: newMessage,
+      sender: 'user',
+      userName: 'You',
+      timestamp: new Date().toISOString()
+    };
+
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
+    const messageToSend = newMessage;
+    setNewMessage('');
+
     try {
-      const accessToken = (await supabase.auth.getSession()).data.session?.access_token;
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-0a04762c/chat/messages`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`
-          },
-          body: JSON.stringify({
-            message: newMessage,
-            roomId: currentRoom
-          })
-        }
-      );
+      const aiResponse = await sendMessageToGemini(messageToSend);
 
-      if (response.ok) {
-        const data = await response.json();
-        setMessages(prev => [...prev, data.message]);
-        setNewMessage('');
+      const aiMessage = {
+        id: `ai-${Date.now()}`,
+        message: aiResponse,
+        sender: 'ai',
+        userName: 'AI Assistant',
+        timestamp: new Date().toISOString()
+      };
 
-        // Simulate AI response in AI assistant rooms
-        if (currentRoom === 'ai-assistant') {
-          setTimeout(() => {
-            const randomResponse = aiResponses[Math.floor(Math.random() * aiResponses.length)];
-            const aiMessage = {
-              id: `ai-${Date.now()}`,
-              message: randomResponse,
-              userId: 'ai-assistant',
-              userName: 'AI Travel Assistant',
-              timestamp: new Date().toISOString(),
-              roomId: currentRoom
-            };
-            setMessages(prev => [...prev, aiMessage]);
-          }, 1000);
-        }
-      } else {
-        const errorData = await response.json();
-        setError(errorData.error || 'Failed to send message');
-      }
+      const finalMessages = [...updatedMessages, aiMessage];
+      setMessages(finalMessages);
+      await saveChatHistory(finalMessages);
     } catch (error) {
-      console.error('Error sending message:', error);
-      setError('Failed to send message');
+      setError('Failed to get response. Please check your API key and try again.');
+      console.error('Error:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
   };
 
-  const formatTime = (timestamp: string) => {
+  const formatTime = (timestamp) => {
     return new Date(timestamp).toLocaleTimeString([], { 
       hour: '2-digit', 
       minute: '2-digit' 
     });
   };
 
-  const MessageBubble = ({ message }: { message: Message }) => {
-    const isOwnMessage = user && message.userId === user.id;
-    const isAI = message.userId === 'ai-assistant';
-    
-    return (
-      <div className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'} mb-4`}>
-        <div className={`max-w-xs lg:max-w-md ${isOwnMessage ? 'order-2' : 'order-1'}`}>
-          <div className={`flex items-center mb-1 ${isOwnMessage ? 'justify-end' : 'justify-start'} space-x-2`}>
-            {!isOwnMessage && (
-              <div className="flex items-center space-x-1">
-                {isAI ? (
-                  <div className="h-6 w-6 rounded-full flex items-center justify-center" style={{ backgroundColor: '#36bcf8' }}>
-                    <Bot className="h-4 w-4 text-white" />
-                  </div>
-                ) : (
-                  <div className="h-6 w-6 rounded-full bg-gray-400 flex items-center justify-center">
-                    <User className="h-4 w-4 text-white" />
-                  </div>
-                )}
-                <span className="text-xs font-medium text-gray-600">{message.userName}</span>
-              </div>
-            )}
-            <span className="text-xs text-gray-500">{formatTime(message.timestamp)}</span>
-          </div>
-          <div
-            className={`rounded-lg p-3 ${
-              isOwnMessage
-                ? 'text-white'
-                : isAI
-                ? 'bg-blue-50 text-gray-900 border border-blue-200'
-                : 'bg-gray-100 text-gray-900'
-            }`}
-            style={isOwnMessage ? { backgroundColor: '#36bcf8' } : {}}
-          >
-            <p className="text-sm">{message.message}</p>
-          </div>
-        </div>
-      </div>
-    );
-  };
+  const chatRooms = [
+    { name: 'General Travel', icon: <MessageCircle className="h-4 w-4" />, count: 24 },
+    { name: 'Europe Adventures', icon: <MapPin className="h-4 w-4" />, count: 18 },
+    { name: 'Budget Travel Tips', icon: <DollarSign className="h-4 w-4" />, count: 31 },
+    { name: 'Trip Planning', icon: <Calendar className="h-4 w-4" />, count: 15 }
+  ];
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-            Travel Chat & AI Assistant
-          </h1>
-          <p className="text-xl text-gray-600">
-            Connect with fellow travelers and get instant help from our AI assistant
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Sidebar */}
-          <div className="lg:col-span-1">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Users className="h-5 w-5" />
-                  <span>Chat Rooms</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {/* AI Assistant */}
-                <button
-                  onClick={() => setCurrentRoom('ai-assistant')}
-                  className={`w-full text-left p-3 rounded-lg transition-colors ${
-                    currentRoom === 'ai-assistant'
-                      ? 'text-white'
-                      : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                  style={{
-                    backgroundColor: currentRoom === 'ai-assistant' ? '#36bcf8' : 'transparent'
-                  }}
-                >
+        <div className="grid grid-cols-1 h-full lg:grid-cols-4 gap-6">
+          <div className="lg:col-span-1 h-200 space-y-6">
+            <Card className="bg-white h-600 border border-gray-200">
+              <div className="p-4 border-b border-gray-200">
+                <div className="flex items-center space-x-2 text-gray-700">
+                  <MessageCircle className="h-5 w-5" />
+                  <h3 className="font-semibold">Chat Rooms</h3>
+                </div>
+              </div>
+              <div className="p-3">
+                <button className="w-full text-left mb-2 p-3 rounded-lg bg-cyan-400 text-white hover:bg-cyan-500 transition-colors">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
                       <Sparkles className="h-4 w-4" />
-                      <span className="font-medium">AI Assistant</span>
+                      <span className="font-medium text-sm">AI Assistant</span>
                     </div>
-                    <Badge 
-                      variant="secondary" 
-                      className="text-xs"
-                      style={{ 
-                        backgroundColor: currentRoom === 'ai-assistant' ? 'rgba(255,255,255,0.2)' : '#e0f7ff',
-                        color: currentRoom === 'ai-assistant' ? 'white' : '#36bcf8'
-                      }}
-                    >
+                    <Badge className="bg-white/20 text-white text-xs border-0">
                       AI
                     </Badge>
                   </div>
                 </button>
-
-                {/* Regular Chat Rooms */}
-                {chatRooms.map((room) => (
+                {chatRooms.map((room, idx) => (
                   <button
-                    key={room.id}
-                    onClick={() => setCurrentRoom(room.id)}
-                    className={`w-full text-left p-3 rounded-lg transition-colors ${
-                      currentRoom === room.id
-                        ? 'text-white'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                    style={{
-                      backgroundColor: currentRoom === room.id ? '#36bcf8' : 'transparent'
-                    }}
+                    key={idx}
+                    className="w-full text-left mb-2 p-3 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
                         {room.icon}
-                        <span className="font-medium">{room.name}</span>
+                        <span className="font-medium text-sm">{room.name}</span>
                       </div>
-                      <Badge 
-                        variant="secondary" 
-                        className="text-xs"
-                        style={{ 
-                          backgroundColor: currentRoom === room.id ? 'rgba(255,255,255,0.2)' : '#e0f7ff',
-                          color: currentRoom === room.id ? 'white' : '#36bcf8'
-                        }}
-                      >
-                        {room.members}
+                      <Badge variant="secondary" className="bg-cyan-100 text-cyan-600 text-xs border-0">
+                        {room.count}
                       </Badge>
                     </div>
                   </button>
                 ))}
-              </CardContent>
-            </Card>
-
-            {/* Quick Actions */}
-            <Card className="mt-6">
-              <CardHeader>
-                <CardTitle>Quick Actions</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start"
-                  onClick={() => onNavigate('itinerary')}
-                >
-                  <Calendar className="h-4 w-4 mr-2" />
-                  Create Itinerary
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start"
-                  onClick={() => onNavigate('booking')}
-                >
-                  <MapPin className="h-4 w-4 mr-2" />
-                  Find Hotels
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start"
-                >
-                  <DollarSign className="h-4 w-4 mr-2" />
-                  Budget Calculator
-                </Button>
-              </CardContent>
+              </div>
             </Card>
           </div>
 
           {/* Chat Area */}
-          <div className="lg:col-span-3">
-            <Card className="h-[600px] flex flex-col">
-              <CardHeader className="border-b">
+          <div className="lg:col-span-3 h-300">
+            <Card className="bg-white border border-gray-200">
+              {/* Chat Header */}
+              <div className="p-2 border-b border-gray-200">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center space-x-2">
-                    <Hash className="h-5 w-5" />
-                    <span>
-                      {currentRoom === 'ai-assistant' 
-                        ? 'AI Travel Assistant' 
-                        : chatRooms.find(room => room.id === currentRoom)?.name || 'Chat'
-                      }
-                    </span>
-                  </CardTitle>
-                  {currentRoom === 'ai-assistant' && (
-                    <Badge className="text-white" style={{ backgroundColor: '#36bcf8' }}>
-                      <Bot className="h-3 w-3 mr-1" />
-                      AI Powered
-                    </Badge>
-                  )}
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xl">#</span>
+                      <h2 className="text-lg font-semibold text-gray-900">AI Travel Assistant</h2>
+                    </div>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Get instant help with trip planning, recommendations, and travel advice
+                    </p>
+                  </div>
+                  <Badge className="bg-cyan-400 text-white border-0">
+                    AI Powered
+                  </Badge>
                 </div>
-                {currentRoom === 'ai-assistant' && (
-                  <p className="text-sm text-gray-600">
-                    Get instant help with trip planning, recommendations, and travel advice
-                  </p>
-                )}
-              </CardHeader>
+              </div>
 
-              {/* Messages */}
-              <CardContent className="flex-1 overflow-y-auto p-4">
+              {/* Messages Area */}
+              <div className="h-[500px] overflow-y-auto p-6">
                 {error && (
                   <Alert variant="destructive" className="mb-4">
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
                 )}
 
-                {currentRoom === 'ai-assistant' && messages.length === 0 && (
-                  <div className="text-center py-8">
-                    <div className="h-16 w-16 rounded-full mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: '#36bcf8' }}>
-                      <Bot className="h-8 w-8 text-white" />
+                {messages.length === 0 && (
+                  <div className="text-center py-12">
+                    <div className="inline-block p-4 rounded-full bg-cyan-100 mb-4">
+                      <Sparkles className="h-8  w-8 text-cyan-500" />
                     </div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">
                       Welcome to AI Travel Assistant!
                     </h3>
-                    <p className="text-gray-600 mb-4">
-                      I'm here to help you plan the perfect trip. Ask me about destinations, budgets, itineraries, or anything travel-related!
+                    <p className="text-gray-600 mb-6">
+                      Ask me about destinations, budgets, itineraries, or anything travel-related!
                     </p>
-                    <div className="flex flex-wrap gap-2 justify-center">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setNewMessage("What are the best destinations for a romantic getaway?")}
-                      >
-                        Romantic destinations?
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setNewMessage("Help me plan a budget trip to Europe")}
-                      >
-                        Budget Europe trip?
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setNewMessage("What should I pack for a beach vacation?")}
-                      >
-                        Beach packing list?
-                      </Button>
-                    </div>
                   </div>
                 )}
 
                 {messages.map((message) => (
-                  <MessageBubble key={message.id} message={message} />
+                  <div key={message.id} className="mb-6">
+                    <div className="flex items-start space-x-3">
+                      <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center flex-shrink-0">
+                        <User className="h-4 w-4 text-gray-600" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <span className="font-medium text-sm text-gray-900">
+                            {message.userName}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {formatTime(message.timestamp)}
+                          </span>
+                        </div>
+                        <div className="bg-gray-100 rounded-lg p-3 text-gray-800 text-sm">
+                          {message.message}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 ))}
 
-                <div ref={messagesEndRef} />
-              </CardContent>
-
-              {/* Message Input */}
-              <div className="border-t p-4">
-                {!user ? (
-                  <div className="text-center">
-                    <p className="text-gray-600 mb-3">Please login to join the conversation</p>
-                    <Button 
-                      onClick={() => onNavigate('login')}
-                      className="text-white"
-                      style={{ backgroundColor: '#36bcf8' }}
-                    >
-                      Login to Chat
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="flex space-x-2">
-                    <Input
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      onKeyPress={handleKeyPress}
-                      placeholder={
-                        currentRoom === 'ai-assistant' 
-                          ? "Ask me anything about travel..." 
-                          : "Type your message..."
-                      }
-                      className="flex-1"
-                      disabled={isLoading}
-                    />
-                    <Button
-                      onClick={sendMessage}
-                      disabled={isLoading || !newMessage.trim()}
-                      className="text-white"
-                      style={{ backgroundColor: '#36bcf8' }}
-                    >
-                      <Send className="h-4 w-4" />
-                    </Button>
+                {isLoading && (
+                  <div className="mb-6">
+                    <div className="flex items-start space-x-3">
+                      <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center flex-shrink-0">
+                        <User className="h-4 w-4 text-gray-600" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-medium text-sm text-gray-900 mb-1">AI Assistant</div>
+                        <div className="bg-gray-100 rounded-lg p-3">
+                          <div className="flex space-x-2">
+                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
+
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Input Area */}
+              <div className="border-t border-gray-200 p-4">
+                <div className="flex space-x-2">
+                  <Input
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder="Ask me anything about travel..."
+                    className="flex-1 border-gray-300"
+                    disabled={isLoading}
+                  />
+                  <Button
+                    onClick={sendMessage}
+                    disabled={isLoading || !newMessage.trim()}
+                    className="bg-cyan-400 hover:bg-cyan-500 text-white"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </Card>
           </div>
